@@ -12,86 +12,75 @@ import glob
 
 
 def CameraCalibration():
-    # Preparation des critères d'arret de la fonction cornerSubPlix
-    # Iterations = 30 et Accuracy = 0.001
+    # Préparation des critères d'arrêt de la fonction cornerSubPix
+    # Itérations = 30 et Précision = 0.001
     criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-    # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
-    ############ to adapt ##########################
-    # Array de zeros 24 lignes et 3 colonnes
-    objp = np.zeros((5*8, 3), np.float32)
-    # np.mgrid 4 lignes et 6 colonnes transpose puis reshape en 2 colonnes et 1 ligne puis on les mets dans objp
-    objp[:, :2] = np.mgrid[0:5, 0:8].T.reshape(-1, 2)
-    #
-    objp[:, :2] *= 35  # taille de la case 40 mm
-    #################################################
-    #
-    objpoints = []  #
-    imgpoints = []  #
-    ############ to adapt ##########################
-    # 'Images/chess/P30/*.jpg'
+    
+    # Prépare les points 3D de l'échiquier
+    objp = np.zeros((5*8, 3), np.float32) #Crée une matrice 3D de zéros avec 5*8 lignes et 3 colonnes
+    objp[:, :2] = np.mgrid[0:5, 0:8].T.reshape(-1, 2) #Crée une grille 2D avec les coordonnées x et y des coins de l'échiquier et ensuite les transposent.
+    objp[:, :2] *= 35  # taille de la case de l'échiquier en mm
+    
+    
+    objpoints = []  #Points 3D réels
+    imgpoints = []  #Points 2D de l'image
+    
+    #Liste des chemin des imades de l'échiquier par la camera gauche 
     images = glob.glob('Images/cameraBleu/*.jpg')
-    #################################################
     for fname in images:
         # img = cv.imread(fname)
-        # On lit l'image avec img read puis pyrDown fait un focus sur l'echiquier
-        img = cv.pyrDown(cv.imread(fname))
-        # Definir la couleur sur d'ont on fait l'analyse ici gray
-        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-        # La fonction qui trouve les corners de echiquier
-        ############ to adapt ##########################
-        ret, corners = cv.findChessboardCorners(gray, (5, 8), None)
-        #################################################
+        
+        img = cv.pyrDown(cv.imread(fname)) #Lit l'image puis réduit de la résolution 
+        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY) #Definit la couleur en niveau de gris 
+        ret, corners = cv.findChessboardCorners(gray, (5, 8), None) #Recherche les coins de l'échiquier
+        
         print(ret)
-        # Si des coins son trouvé, on les ajoute à imgpoints et on ajoute à objpoints les coordonnées que nous avont specifier, on applique cornerSubPix qui
-        # trouve une position plus exacte des coins, à imgpoints
+        
         if ret == True:
             objpoints.append(objp)
-            corners2 = cv.cornerSubPix(
-                gray, corners, (11, 11), (-1, -1), criteria)
+            corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria) #Raffine les coins
             imgpoints.append(corners)
-            #
-            ############ to adapt ##########################
-            # Dessine les corners sur l'echiquier de la fonction cornerSubPix
-            cv.drawChessboardCorners(img, (5, 8), corners2, ret)
-            #################################################
+            
+            cv.drawChessboardCorners(img, (5, 8), corners2, ret) #Dessine les coins sur l'image de l'échiquier
+            
+            ############################################ 
             cv.namedWindow('img', 0)
             cv.imshow('img', img)
             cv.waitKey(500)
     cv.destroyAllWindows()
 
-    #
-    ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(
-        objpoints, imgpoints, gray.shape[::-1], None, None)
+    #Calibration de la caméra
+    ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
     print('camraMatrix\n', mtx)
     print('dist\n', dist)
 
-    ############ to adapt ##########################
-    img = cv.pyrDown(cv.imread('Images/cameraRouge/rouge.jpg'))
-    #################################################
+    img = cv.pyrDown(cv.imread('Images/chess2/test2.jpg'))
+    
+    #La nouvelle matrice de la caméra optimale 
     h, w = img.shape[:2]
-    newcameramtx, roi = cv.getOptimalNewCameraMatrix(
-        mtx, dist, (w, h), 1, (w, h))
+    newcameramtx, roi = cv.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
     print('newcameramtx\n', newcameramtx)
 
-    # touver une fonction de mapping de l'ancienne image, et utiliser cette
-    # fonction pour enlever la distortion
-    mapx, mapy = cv.initUndistortRectifyMap(
-        mtx, dist, None, newcameramtx, (w, h), 5)
+    #Utilisation de la fonction de mapping pour enlever la distortion
+    mapx, mapy = cv.initUndistortRectifyMap(mtx, dist, None, newcameramtx, (w, h), 5)
     dst = cv.remap(img, mapx, mapy, cv.INTER_LINEAR)
-    # delimiter la region d'intéret et faire un crop
+    
+    #Découper la région d'intérêt
     x, y, w, h = roi
-
     dst = dst[y:y+h, x:x+w]
+    
+    ############################################
     cv.namedWindow('img', 0)
     cv.imshow('img', dst)
     cv.waitKey(1)
-    ############ to adapt ##########################
+    
+    ############ Enregistrement ##########################
     cv.imwrite('calibresultM.png', dst)
-    #################################################
+    
+    #Calculer l'erreur de la calibration 
     mean_error = 0
     for i in range(len(objpoints)):
-        imgpoints2, _ = cv.projectPoints(
-            objpoints[i], rvecs[i], tvecs[i], mtx, dist)
+        imgpoints2, _ = cv.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
         error = cv.norm(imgpoints[i], imgpoints2, cv.NORM_L2) / len(imgpoints2)
         mean_error += error
     print("total error: {}".format(mean_error / len(objpoints)))
@@ -100,22 +89,25 @@ def CameraCalibration():
 
 
 def DepthMapfromStereoImages():
-    imgL = cv.imread('Images/cameraBleu/bleu.jpg')
-    imgR = cv.imread('Images/cameraRouge/rouge.jpg')
-
-    # Assurez-vous que les images sont de la même taille
+    ############ to adapt ##########################
+    imgL = cv.pyrDown(cv.imread('Images/cameraBleu/bleu.jpg'))
+    imgR = cv.pyrDown(cv.imread('Images/cameraRouge/rouge.jpg'))
+    #################################################
+    
+    #s'assurer que les images sont de la même taille
     imgL = cv.resize(imgL, (640, 480))
     imgR = cv.resize(imgR, (640, 480))
 
-    # Convertir en niveaux de gris
+    #Convertir en niveaux de gris
     imgL = cv.cvtColor(imgL, cv.COLOR_BGR2GRAY)
     imgR = cv.cvtColor(imgR, cv.COLOR_BGR2GRAY)
 
-    # Paramètres de StereoSGBM
+    #Paramètres de StereoSGBM
     window_size = 15
     min_disp = 0
     num_disp = 160 - min_disp  # Doit être un multiple de 16.
-
+    
+    #Création d'un objet StereoSGBM 
     stereo = cv.StereoSGBM_create(minDisparity=min_disp,
                                   numDisparities=num_disp,
                                   blockSize=16,
@@ -125,11 +117,13 @@ def DepthMapfromStereoImages():
                                   uniquenessRatio=10,
                                   speckleWindowSize=100,
                                   speckleRange=32)
-
+    
+    #Calcul la carte de disparité
+    
     disparity = stereo.compute(imgL, imgR).astype(np.float32) / 16.0
-
+    #Affichage de la carte de disparité normalisée
     plt.figure('3D')
-    plt.imshow((disparity - min_disp) / num_disp, 'gray')
+    plt.imshow((disparity-min_disp)/num_disp, 'gray')
     plt.colorbar()
     plt.show()
 
@@ -140,6 +134,8 @@ def drawlines(img1, img2, lines, pts1, pts2):
     r, c = img1.shape
     img1 = cv.cvtColor(img1, cv.COLOR_GRAY2BGR)
     img2 = cv.cvtColor(img2, cv.COLOR_GRAY2BGR)
+    
+    #Dessiner les lignes épipolaires sur les images en définissant les points correspondantes
     for r, pt1, pt2 in zip(lines, pts1, pts2):
         color = tuple(np.random.randint(0, 255, 3).tolist())
         x0, y0 = map(int, [0, -r[2]/r[1]])
@@ -155,14 +151,16 @@ def StereoCalibrate(Cameramtx):
     img1 = cv.pyrDown(cv.imread('Images/cameraBleu/bleu.jpg', 0))
     img2 = cv.pyrDown(cv.imread('Images/cameraRouge/rouge.jpg', 0))
     #################################################
+    
+    
     # opencv 4.5
-    sift = cv.SIFT_create()
-    # opencv 3.4
-    # sift = cv.xfeatures2d.SIFT_create()
-    #
+    sift = cv.SIFT_create() #Initialise le détecteur de points SIFT
+    # opencv 3.4: sift = cv.xfeatures2d.SIFT_create()
+    
     kp1, des1 = sift.detectAndCompute(img1, None)
     kp2, des2 = sift.detectAndCompute(img2, None)
-    #
+    
+    #Les paramétres pour la correspondance des descripteurs
     FLANN_INDEX_KDTREE = 1
     index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
     search_params = dict(checks=50)
@@ -171,7 +169,7 @@ def StereoCalibrate(Cameramtx):
     good = []
     pts1 = []
     pts2 = []
-    # ratio test as per Lowe's paper
+    #Utiliser le rfatio test pour filtrer les bonnes correspondances 
     for i, (m, n) in enumerate(matches):
         if m.distance < 0.7 * n.distance:
             good.append(m)
@@ -180,20 +178,21 @@ def StereoCalibrate(Cameramtx):
     pts1 = np.int32(pts1)
     pts2 = np.int32(pts2)
 
-    #
+    #########################Dessiner#################################
     img3 = cv.drawMatches(img1, kp1, img2, kp2, good, None, flags=2)
     plt.imshow(img3)
     plt.show()
 
-    #
+    #Calculer la matrice essentielle 
     E, maskE = cv.findEssentialMat(pts1, pts2, Cameramtx, method=cv.FM_LMEDS)
     print('E\n', E)
-    #
+    
+    #Lapose entre la caméra droite et la caméra gauche 
     retval, R, t, maskP = cv.recoverPose(E, pts1, pts2, Cameramtx, maskE)
     print('R\n', R)
     print('t\n', t)
 
-    #
+    #Calculer la matrice fondamentale
     F, maskF = cv.findFundamentalMat(pts1, pts2, cv.FM_LMEDS)
     print('F\n', F)
 
@@ -207,18 +206,19 @@ def EpipolarGeometry(pts1, pts2, F, maskF):
     #################################################
     r, c = img1.shape
 
-    #
+    #Filter les points correspondants en utilisant le masque de la matrice fondamentale
     pts1F = pts1[maskF.ravel() == 1]
     pts2F = pts2[maskF.ravel() == 1]
 
-    #
+    #Calculer les lignes épipolaires pour l'image droite et l'image gauche 
     lines1 = cv.computeCorrespondEpilines(pts2.reshape(-1, 1, 2), 2, F)
     lines1 = lines1.reshape(-1, 3)
     img5, img6 = drawlines(img1, img2, lines1, pts1F, pts2F)
-    #
     lines2 = cv.computeCorrespondEpilines(pts1.reshape(-1, 1, 2), 1, F)
     lines2 = lines2.reshape(-1, 3)
     img3, img4 = drawlines(img2, img1, lines2, pts2, pts1)
+    
+    #################################################
     plt.figure('Fright')
     plt.subplot(121), plt.imshow(img5)
     plt.subplot(122), plt.imshow(img6)
@@ -227,11 +227,12 @@ def EpipolarGeometry(pts1, pts2, F, maskF):
     plt.subplot(122), plt.imshow(img3)
     plt.show()
 
-    #
+    #Estimer les matrices de rectification dans un stereo non calibré  
     retval, H1, H2 = cv.stereoRectifyUncalibrated(pts1, pts2, F, (c, r))
     print(H1)
     print(H2)
-    #
+    
+    #################################################
     im_dst1 = cv.warpPerspective(img1, H1, (c, r))
     im_dst2 = cv.warpPerspective(img2, H2, (c, r))
     cv.namedWindow('left', 0)
@@ -248,7 +249,7 @@ if __name__ == "__main__":
                              [0, 0, 1]])
     dist = [[0, 0, 0, 0, 0]]
 
-    pts1, pts2, F, maskF, maskE = StereoCalibrate(cameraMatrix)
+    pts1, pts2, F, maskF, FT, maskE = StereoCalibrate(cameraMatrix)
 
     # EpipolarGeometry(pts1, pts2, F, maskF, FT, maskE)
 
